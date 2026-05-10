@@ -44,8 +44,8 @@ from .config import ADMIN_IDS, PAYMENT_TOKEN, ITEMS_PER_PAGE
 router = Router()
 
 payment_system = PaymentSystem(
-    shop_id="1103478",
-        secret_key="live_rn2lnHbd5Sh6JnMgynZ3NeZkvPYtQvL_mcnSYhARJFo"
+    shop_id="0493094320",
+        secret_key="489342034920492343"
 )
 
 
