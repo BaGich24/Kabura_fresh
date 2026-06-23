@@ -98,7 +98,7 @@ async def get_products_keyboard(category: str, session: AsyncSession, page: int 
     
     return builder.as_markup()
 
-async def get_product_detail_keyboard(product_id: int, user_id: int, session: AsyncSession) -> InlineKeyboardMarkup:
+async def get_product_detail_keyboard(product_id: int, user_id: int, session: AsyncSession, category: str) -> InlineKeyboardMarkup:
     """Клавиатура для детального просмотра товара"""
     builder = InlineKeyboardBuilder()
     
@@ -117,7 +117,7 @@ async def get_product_detail_keyboard(product_id: int, user_id: int, session: As
     builder.row(
         InlineKeyboardButton(text=cart_button_text, callback_data=f"add_to_cart_{product_id}"),
         InlineKeyboardButton(text="📦 Корзина", callback_data="view_cart"),
-        InlineKeyboardButton(text="◀️ Назад", callback_data=f"back_to_categories")
+        InlineKeyboardButton(text="◀️ Назад", callback_data=f"back_to_products_{category}")
     )
     builder.adjust(2,1)
     return builder.as_markup()

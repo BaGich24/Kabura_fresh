@@ -306,23 +306,23 @@ async def process_back_to_main(callback: CallbackQuery):
     finally:
         await callback.answer()
 
-@router.callback_query(F.data == "back_to_products")
-async def process_back_to_products(callback: CallbackQuery):
-    """Обработчик возврата к списку товаров"""
+@router.callback_query(F.data.startswith("back_to_products_"))
+async def process_back_to_products(callback: CallbackQuery, session: AsyncSession):
+    """Обработчик возврата к списку товаров той же категории"""
     try:
+        category = callback.data[len("back_to_products_"):]
         await callback.message.edit_text(
-            "📋 Выберите категорию товаров:",
-            reply_markup=get_catalog_keyboard()
+            text=f"Товары в категории: {category}",
+            reply_markup=await get_products_keyboard(category, session)
         )
     except TelegramBadRequest:
         try:
             await callback.message.delete()
-        except Exception as e:
+        except Exception:
             pass
-        
         await callback.message.answer(
-            "📋 Выберите категорию товаров:",
-            reply_markup=get_catalog_keyboard()
+            text=f"Товары в категории: {category}",
+            reply_markup=await get_products_keyboard(category, session)
         )
     finally:
         await callback.answer()
@@ -429,7 +429,8 @@ async def show_product_detail(
     keyboard = await get_product_detail_keyboard(
         product_id=product_id,
         user_id=callback.from_user.id,
-        session=session
+        session=session,
+        category=product.category
     )
     
     # Если у товара есть фото, отправляем его с подписью
@@ -537,7 +538,8 @@ async def add_to_cart(callback: CallbackQuery, session: AsyncSession):
         reply_markup = await get_product_detail_keyboard(
             product_id=product_id,
             user_id=user_id,
-            session=session
+            session=session,
+            category=product.category
         )
         await product_message.edit_reply_markup(reply_markup=reply_markup)
         
