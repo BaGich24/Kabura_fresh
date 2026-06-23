@@ -50,12 +50,26 @@ async def admin_add_photo(callback: CallbackQuery, state: FSMContext):
         await callback.answer("⛔ Доступ запрещен", show_alert=True)
         return
 
-    await callback.message.edit_text(
-        "📷 Введите название товара, которому хотите добавить фото:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
-        ])
-    )
+    try:
+        await callback.message.edit_text(
+            "📷 Введите название товара, которому хотите добавить фото:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+            ])
+        )
+    except TelegramBadRequest:
+        # If edit fails (message is photo/video, etc), delete and send new
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer(
+            "📷 Введите название товара, которому хотите добавить фото:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+            ])
+        )
+    
     await state.set_state(AddPhotoStates.waiting_for_product_name)
     await callback.answer()
 
