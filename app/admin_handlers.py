@@ -44,6 +44,137 @@ async def admin_panel(message: Message):
     
     await message.answer("Админ-панель:", reply_markup=keyboard)
 
+@admin.callback_query(F.data == "admin_add_photo")
+async def admin_add_photo(callback: CallbackQuery, state: FSMContext):
+    if not await is_admin(callback.from_user.id):
+        await callback.answer("⛔ Доступ запрещен", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        "📷 Введите название товара, которому хотите добавить фото:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+        ])
+    )
+    await state.set_state(AddPhotoStates.waiting_for_product_name)
+    await callback.answer()
+
+@admin.message(AddPhotoStates.waiting_for_product_name, F.text)
+async def process_product_name_for_photo(message: Message, state: FSMContext, session: AsyncSession):
+    product_name = message.text.strip()
+    # Используем % для поиска по частичному совпадению (работает с кириллицей)
+    result = await session.execute(
+        select(Product).where(Product.name.ilike(f"%{product_name}%"))
+    )
+    products = result.scalars().all()
+    
+    # Если нашли несколько, ищем точное совпадение
+    product = None
+    if len(products) == 1:
+        product = products[0]
+    elif len(products) > 1:
+        # Ищем точное совпадение среди результатов
+        for p in products:
+            if p.name.lower() == product_name.lower():
+                product = p
+                break
+        # Если точного нет, берём первый
+        if not product:
+            product = products[0]
+
+    if not product:
+        await message.answer(
+            f"❌ Товар '{product_name}' не найден.\n\nПопробуйте ещё раз (введите точное название из каталога):",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_add_photo")]
+            ])
+        )
+        return
+
+    await state.update_data(product_id=product.id)
+    await message.answer(
+        f"✅ Найден товар: {product.name}\n"
+        "Теперь отправьте фото товара (в виде файла) или ссылку на изображение.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отменить", callback_data="admin_back")]
+        ])
+    )
+    await state.set_state(AddPhotoStates.waiting_for_photo_url)
+
+@admin.message(AddPhotoStates.waiting_for_photo_url, F.content_type.in_({ContentType.PHOTO, ContentType.TEXT}))
+async def process_product_photo(message: Message, state: FSMContext, session: AsyncSession):
+    data = await state.get_data()
+    product_id = data.get('product_id')
+    
+    if not product_id:
+        await state.clear()
+        await message.answer(
+            "❌ Ошибка: товар не выбран. Начните заново.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📷 Добавить фото", callback_data="admin_add_photo")]
+            ])
+        )
+        return
+    
+    product = await session.get(Product, product_id)
+
+    if not product:
+        await message.answer(
+            "❌ Товар удален или не существует. Начните заново.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_add_photo")]
+            ])
+        )
+        await state.clear()
+        return
+
+    if message.content_type == ContentType.PHOTO:
+        image_value = message.photo[-1].file_id
+    else:
+        image_value = message.text.strip()
+        if not image_value:
+            await message.answer(
+                "❌ Пожалуйста, отправьте фото товара или ссылку на изображение.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_add_photo")]
+                ])
+            )
+            return
+
+    product.image_url = image_value
+    await session.commit()
+    await state.clear()
+
+    try:
+        await message.answer_photo(
+            photo=image_value,
+            caption=f"✅ Фото для товара '{product.name}' успешно сохранено!"
+        )
+    except Exception:
+        await message.answer(f"✅ Фото для товара '{product.name}' успешно сохранено!")
+
+    await message.answer(
+        "✨ Изображение теперь видно в каталоге. Вы можете вернуться в админ-панель.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ В админ-панель", callback_data="admin_back")]
+        ])
+    )
+
+@admin.callback_query(F.data == "cancel_add_photo")
+async def cancel_add_photo(callback: CallbackQuery, state: FSMContext):
+    """Отмена добавления фото и возврат в админ-панель"""
+    await state.clear()
+    await callback.answer("❌ Добавление фото отменено", show_alert=False)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
+        [InlineKeyboardButton(text="🔍 Найти заказ", callback_data="admin_find_order")],
+        [InlineKeyboardButton(text="📦 Все заказы", callback_data="admin_all_orders")],
+        [InlineKeyboardButton(text="📷 Добавить фото товару", callback_data="admin_add_photo")]
+    ])
+    
+    await callback.message.edit_text("Админ-панель:", reply_markup=keyboard)
+
 @admin.callback_query(F.data == "admin_broadcast")
 async def broadcast_menu(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     if not await is_admin(callback.from_user.id):
@@ -575,7 +706,8 @@ async def back_to_admin(callback: CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="🔍 Найти заказ", callback_data="admin_find_order")],
-        [InlineKeyboardButton(text="📦 Все заказы", callback_data="admin_all_orders")]
+        [InlineKeyboardButton(text="📦 Все заказы", callback_data="admin_all_orders")],
+        [InlineKeyboardButton(text="📷 Добавить фото товару", callback_data="admin_add_photo")]
     ])
     
     await callback.message.edit_text("Админ-панель:", reply_markup=keyboard)
