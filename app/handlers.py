@@ -25,7 +25,7 @@ from aiogram.types import (
     KeyboardButton,
     )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from app.database import CartItem, Database, Order, OrderItem, Product
+from app.database import CartItem, Database, Order, OrderItem, Product, User
 from app.keyboards import (
     get_about_keyboard,
     get_contact_keyboard,
@@ -1238,7 +1238,7 @@ async def show_order_details(callback: CallbackQuery, session: AsyncSession):
         # Создаем кнопки
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="🔙 К списку заказов", callback_data="my_orders"),
+            InlineKeyboardButton(text="🔙 К списку заказов", callback_data="profile"),
             width=1
         )
         
@@ -1251,3 +1251,54 @@ async def show_order_details(callback: CallbackQuery, session: AsyncSession):
         
     except Exception as e:
         await callback.answer("⚠️ Ошибка при загрузке деталей заказа", show_alert=True)
+
+
+@router.callback_query(F.data == "profile")
+async def show_profile(callback: CallbackQuery, session: AsyncSession):
+    try:
+        # Получаем данные пользователя
+        user = await session.scalar(select(User).where(User.telegram_id == callback.from_user.id))
+        phone = getattr(user, 'phone', None) or 'Не указан'
+        address = getattr(user, 'delivery_address', None) or 'Не указан'
+
+        # Получаем заказы пользователя
+        orders = await session.execute(
+            select(Order)
+            .where(Order.user_id == callback.from_user.id)
+            .order_by(Order.created_at.desc())
+        )
+        orders = orders.scalars().all()
+
+        # Формируем клавиатуру с заказами
+        builder = InlineKeyboardBuilder()
+        for order in orders:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"🛒 Заказ №{order.id} | {order.amount} ₽ | {order.status}",
+                    callback_data=f"order_detail_{order.id}"
+                )
+            )
+        builder.row(
+            InlineKeyboardButton(text="🔙 На главную", callback_data="back_to_main")
+        )
+
+        header_text = (
+            f"👤 <b>Мой профиль</b>\n\n"
+            f"📛 <b>Имя:</b> {user.first_name if user else ''} {user.last_name if user else ''}\n"
+            f"📞 <b>Телефон:</b> {phone}\n"
+            f"📍 <b>Адрес:</b> {address}\n\n"
+            f"📦 <b>Ваши заказы:</b>"
+        )
+
+        try:
+            await callback.message.edit_text(header_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        except TelegramBadRequest:
+            try:
+                await callback.message.delete()
+            except:
+                pass
+            await callback.message.answer(header_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+        await callback.answer()
+    except Exception as e:
+        await callback.answer("⚠️ Не удалось загрузить профиль", show_alert=True)

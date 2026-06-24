@@ -24,11 +24,11 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
     builder.add(
         InlineKeyboardButton(text="📋 Каталог", callback_data="catalog"),
         InlineKeyboardButton(text='🛒 Корзина', callback_data='view_cart'),
-        InlineKeyboardButton(text='📦 Мой заказы',callback_data='my_orders'),
+        InlineKeyboardButton(text='👤 Мой профиль', callback_data='profile'),
         InlineKeyboardButton(text="📞 Контакты", callback_data="contacts"),
         InlineKeyboardButton(text="ℹ️ О сервисе", callback_data="about")
     )
-    builder.adjust(1,1,1,2)  
+    builder.adjust(1,1,1,2)
     return builder.as_markup()
 
 

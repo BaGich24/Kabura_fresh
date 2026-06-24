@@ -24,6 +24,8 @@ class User(Base):
     username = Column(String)
     first_name = Column(String)
     last_name = Column(String)
+    phone = Column(String(20))
+    delivery_address = Column(String(200))
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Product(Base):
@@ -48,7 +50,7 @@ class CartItem(Base):
     __tablename__ = 'cart_items'
     
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.telegram_id'), nullable=False)
     order_id = Column(Integer, ForeignKey("orders.id"))
     product_id = Column(Integer, ForeignKey('products.id'), nullable=False)
     product_name = Column(String(100)) 
@@ -75,12 +77,12 @@ class Order(Base):
     __tablename__ = 'orders'
     
     id = Column(Integer, primary_key=True)
-    user_id = Column(BigInteger, nullable=False)
-    payment_id = Column(String)  # Telegram user_id обычно bigint
+    user_id = Column(BigInteger, ForeignKey('users.telegram_id'), nullable=False)
+    payment_id = Column(String)  # ID платежа
     amount = Column(Numeric(10, 2), nullable=False)  # Лучше для денег, чем Float
-    customer_name = Column(String(100), nullable=False)  # Ограничение длины
-    customer_phone = Column(String(20), nullable=False)  # + и цифры занимают место
-    delivery_address = Column(String(200), nullable=False)
+    customer_name = Column(String(100), nullable=False)
+    customer_phone = Column(String(20), nullable=False)
+    delivery_address = Column(String(200))
     delivery_time = Column(String(20))  # "morning", "afternoon" etc.
     status = Column(String(20), default='new', nullable=False)
     created_at = Column(DateTime, server_default=func.now())
@@ -125,19 +127,30 @@ class Database:
             return result.scalar_one_or_none()
     
     async def create_user(self, telegram_id: int, username: str = None, 
-                         first_name: str = None, last_name: str = None):
+                         first_name: str = None, last_name: str = None, phone: str = None, delivery_address: str = None):
         """Создание нового пользователя"""
         async with self.async_session() as session:
             user = User(
                 telegram_id=telegram_id,
                 username=username,
                 first_name=first_name,
-                last_name=last_name
+                last_name=last_name,
+                phone=phone,
+                delivery_address=delivery_address
             )
             session.add(user)
             await session.commit()
             return user
 
+    async def get_cart(self, telegram_id: int):
+        """Возвращает список кортежей (CartItem, Product) для указанного telegram_id"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(CartItem, Product)
+                .join(Product, CartItem.product_id == Product.id)
+                .where(CartItem.user_id == telegram_id)
+            )
+            return result.all()
 
 
     
