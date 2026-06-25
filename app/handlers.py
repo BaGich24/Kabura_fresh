@@ -38,15 +38,20 @@ from app.keyboards import (
     get_location_keyboard
 )
 from app.payment import PaymentSystem
-from .config import ADMIN_IDS, PAYMENT_TOKEN, ITEMS_PER_PAGE
+from .config import ADMIN_IDS, PAYMENT_SHOP_ID, PAYMENT_SECRET_KEY, ITEMS_PER_PAGE
 
 # Создаем роутер
 router = Router()
 
-payment_system = PaymentSystem(
-    shop_id="0493094320",
-        secret_key="489342034920492343"
-)
+payment_system = None
+if PAYMENT_SHOP_ID and PAYMENT_SECRET_KEY:
+    payment_system = PaymentSystem(
+        shop_id=PAYMENT_SHOP_ID,
+        secret_key=PAYMENT_SECRET_KEY
+    )
+else:
+    # Если ключи не настроены, при оформлении заказа появится понятное сообщение.
+    print("PAYMENT_SHOP_ID или PAYMENT_SECRET_KEY не настроены. Платежная система отключена.")
 
 
 # Состояния FSM для оформления заказа
@@ -958,6 +963,12 @@ async def process_delivery_time(
         await state.update_data(delivery_time=delivery_time)
         
         # Создаем платеж
+        if payment_system is None:
+            await callback.message.answer(
+                "⚠️ Платежная система не настроена. Обратитесь к администратору."
+            )
+            return
+
         payment = await payment_system.create_payment(
             amount=float(data['total']),
             user_id=user_id,
@@ -965,7 +976,9 @@ async def process_delivery_time(
         )
         
         if not payment:
-            await callback.message.answer("⚠️ Ошибка платежной системы. Пожалуйста, попробуйте позже.")
+            await callback.message.answer(
+                "⚠️ Ошибка платежной системы. Проверьте настройки платежей или повторите позже."
+            )
             return
             
         # Сохраняем данные платежа
@@ -1057,6 +1070,27 @@ async def check_payment_handler(
                     price=item.price
                 )
                 session.add(order_item)
+            
+            # Обновляем информацию о пользователе (сохраняем телефон и адрес)
+            try:
+                db_user = await session.scalar(select(User).where(User.telegram_id == user_id))
+                if db_user:
+                    if state_data.get('phone'):
+                        db_user.phone = state_data.get('phone')
+                    if state_data.get('address'):
+                        db_user.delivery_address = state_data.get('address')
+                else:
+                    # Если пользователя нет в таблице (маловероятно), создаём запись
+                    new_user = User(
+                        telegram_id=user_id,
+                        first_name=state_data.get('name'),
+                        phone=state_data.get('phone'),
+                        delivery_address=state_data.get('address')
+                    )
+                    session.add(new_user)
+            except Exception:
+                # Игнорируем проблемы с обновлением профиля, чтобы не мешать оформлению заказа
+                pass
             
             # Очищаем корзину
             await session.execute(
@@ -1195,9 +1229,8 @@ async def show_order_details(callback: CallbackQuery, session: AsyncSession):
         
         # Получаем товары из этого заказа
         items_result = await session.execute(
-            select(CartItem, Product)
-            .join(Product, CartItem.product_id == Product.id)
-            .where(CartItem.order_id == order_id)
+            select(OrderItem)
+            .where(OrderItem.order_id == order_id)
         )
         items = items_result.scalars().all()
         
@@ -1217,19 +1250,11 @@ async def show_order_details(callback: CallbackQuery, session: AsyncSession):
         
         # Добавляем товары
         for item in items:
-            product = await session.get(Product, item.product_id)
-            if not product:
-                continue
-                
-            # Определяем цену (розничная или оптовая)
-            price = product.wholesale_price  # По умолчанию розничная цена
-            price_type = "опт"
-            
             message_text += (
-                f"🍅 <b>{product.name}</b>\n"
-                f"├ Цена ({price_type}): {price} ₽/кг\n"
+                f"🍅 <b>{item.product_name}</b>\n"
+                f"├ Цена: {item.price} ₽\n"
                 f"├ Количество: {item.quantity} кг\n"
-                f"└ Сумма: {price * item.quantity} ₽\n"
+                f"└ Сумма: {item.price * item.quantity} ₽\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
             )
         

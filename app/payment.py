@@ -1,6 +1,7 @@
 from yookassa import Configuration, Payment, Refund
 from datetime import datetime
 import uuid
+import traceback
 from typing import Dict, Optional, Literal, Tuple, List, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
@@ -14,6 +15,15 @@ PaymentStatus = Literal["pending", "waiting_for_capture", "succeeded", "canceled
 class PaymentSystem:
     def __init__(self, shop_id: str, secret_key: str):
         """Initialize payment system with credentials"""
+        if not shop_id or not secret_key:
+            raise RuntimeError("Payment credentials are not configured")
+
+        if not (secret_key.startswith("test_") or secret_key.startswith("live_")):
+            raise RuntimeError(
+                "YooKassa secret key has wrong format. Use the Secret key from Merchant Profile, "
+                "it should start with test_ or live_."
+            )
+
         try:
             Configuration.account_id = shop_id
             Configuration.secret_key = secret_key
@@ -75,6 +85,8 @@ class PaymentSystem:
                 "amount": float(payment.amount.value)
             }
         except Exception as e:
+            print(f"PaymentSystem.create_payment error: {type(e).__name__}: {e}")
+            traceback.print_exc()
             return None
 
     async def check_payment_status(self, payment_id: str) -> Optional[PaymentStatus]:

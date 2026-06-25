@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Загружаем переменные окружения
-load_dotenv()
+# Загружаем переменные окружения и перезаписываем их из .env, если нужно
+load_dotenv(override=True)
 
 # Токен бота
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -32,6 +32,8 @@ WHOLESALE_MIN_WEIGHT = float(os.getenv('WHOLESALE_MIN_WEIGHT', '5.0'))
 
 # Токен платежной системы
 PAYMENT_TOKEN = os.getenv('PAYMENT_TOKEN')
+PAYMENT_SHOP_ID = os.getenv('PAYMENT_SHOP_ID')
+PAYMENT_SECRET_KEY = os.getenv('PAYMENT_SECRET_KEY') or PAYMENT_TOKEN
 
 # Количество товаров на странице
 ITEMS_PER_PAGE = int(os.getenv('ITEMS_PER_PAGE', '5'))

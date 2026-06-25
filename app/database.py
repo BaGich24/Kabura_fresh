@@ -1,6 +1,6 @@
 import asyncio
 from typing import Dict, List, Optional
-from sqlalchemy import BigInteger, Column, Index, Integer, Numeric, String, Float, DateTime, ForeignKey, Boolean, select, func, update
+from sqlalchemy import BigInteger, Column, Index, Integer, Numeric, String, Float, DateTime, ForeignKey, Boolean, select, func, update, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -113,7 +113,21 @@ class Database:
         """Инициализация базы данных"""
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(self._apply_sqlite_migrations)
     
+    def _apply_sqlite_migrations(self, conn):
+        """Применение необходимых миграций для SQLite при изменении схемы."""
+        if conn.dialect.name != "sqlite":
+            return
+
+        inspector = inspect(conn)
+        if 'users' in inspector.get_table_names():
+            existing_columns = {col['name'] for col in inspector.get_columns('users')}
+            if 'phone' not in existing_columns:
+                conn.execute(text('ALTER TABLE users ADD COLUMN phone VARCHAR(20)'))
+            if 'delivery_address' not in existing_columns:
+                conn.execute(text('ALTER TABLE users ADD COLUMN delivery_address VARCHAR(200)'))
+
     async def close(self):
         """Закрытие соединения с базой данных"""
         await self.engine.dispose()

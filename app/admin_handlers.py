@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 from aiogram.filters import Command
 from sqlalchemy import delete, func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from .database import User, Order, CartItem, Product
+from .database import User, Order, CartItem, OrderItem, Product
 from .config import ADMIN_IDS
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -577,15 +577,15 @@ async def order_details(callback: CallbackQuery, session: AsyncSession):
         if user.username:
             user_info += f" (@{user.username})"
     
-    cart_items = await session.execute(
-        select(CartItem)
-        .where(CartItem.order_id == order_id)
+    order_items = await session.execute(
+        select(OrderItem)
+        .where(OrderItem.order_id == order_id)
     )
-    cart_items = cart_items.scalars().all()
+    order_items = order_items.scalars().all()
     
     items_text = "\n".join(
         f"• {item.product_name} - {item.quantity} шт. x {item.price} ₽"
-        for item in cart_items
+        for item in order_items
     )
     
     text = (
